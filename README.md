@@ -101,5 +101,4 @@ Claude Code を起動し、`/absence` と入力してください。
 
 ## 注意事項
 
-- `PHPSESSID` はセッションが切れるたびに `.env` を更新してください
 - `data/timetable.md` と `.env` は `.gitignore` に含まれているためコミットされません
