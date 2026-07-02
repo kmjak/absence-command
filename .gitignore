@@ -1,0 +1,8 @@
+# 環境変数
+.env
+
+# ログファイル
+logs/log/*.md
+
+# 時間割
+data/timetable.md
