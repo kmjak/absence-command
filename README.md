@@ -28,6 +28,8 @@ cp .env.example .env
 
 ```env
 STUDENT_PORTAL_URL=https://your-school-portal.example.com
+STUDENT_PORTAL_USER_ID=your_student_id
+STUDENT_PORTAL_PASSWORD=your_password
 STUDENT_PORTAL_PHPSESSID=your_phpsessid_here
 ```
 
@@ -53,7 +55,7 @@ cp data/timetable.example.md data/timetable.md
 ### 4. スクリプトに実行権限を付与
 
 ```bash
-chmod +x scripts/run.sh scripts/submit.sh
+chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh
 ```
 
 ---
@@ -89,12 +91,13 @@ Claude Code を起動し、`/absence` と入力してください。
 │   ├── timetable.example.md
 │   └── weekdays.md         # 授業がある曜日
 ├── scripts/
+│   ├── login.sh            # ポータルへのログインスクリプト
 │   ├── run.sh              # .env読み込みラッパー
 │   └── submit.sh           # ポータルへのHTTP POSTスクリプト
 ├── logs/
 │   └── log/                # 申請ログ（.gitignore対象）
 ├── .env                    # 環境変数（.gitignore対象）
-└── .env.example
+└── .env.example            # 環境変数のテンプレート
 ```
 
 ---
