@@ -19,6 +19,10 @@ IMAGE_PATH="${15}"
 TS=$(date +%s%3N)
 URL="${STUDENT_PORTAL_URL}/PortalManagementWeb/public/studentapplicationdetail/regist?ts=${TS}"
 
+MIME_TYPE=$(file --mime-type -b "${IMAGE_PATH}")
+TMPFILE=$(mktemp)
+echo -n "data:${MIME_TYPE};base64,$(base64 < "${IMAGE_PATH}" | tr -d '\n')" > "${TMPFILE}"
+
 curl -X POST "${URL}" \
   -H "Referer: ${STUDENT_PORTAL_URL}" \
   -H "Referrer-Policy: strict-origin-when-cross-origin" \
@@ -36,7 +40,7 @@ curl -X POST "${URL}" \
   -F "flex_free_item9=${DATE5}" \
   -F "flex_free_item10=${PERIODS5}" \
   -F "text_attached_image_file_name=${IMAGE_NAME}" \
-  -F "studen_upload_image_inputlable_uploadfile=@${IMAGE_PATH}" \
+  -F "studen_upload_image_inputlable_uploadfile=" \
   -F "x1=" \
   -F "y1=" \
   -F "w=" \
@@ -45,4 +49,6 @@ curl -X POST "${URL}" \
   -F "mode=0" \
   -F "ad_sid=" \
   -F "application_code=8" \
-  -F "upload_attached_image_base64="
+  -F "upload_attached_image_base64=<${TMPFILE}"
+
+rm -f "${TMPFILE}"
