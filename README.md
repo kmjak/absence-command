@@ -55,14 +55,16 @@ cp data/timetable.example.md data/timetable.md
 ### 4. スクリプトに実行権限を付与
 
 ```bash
-chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh
+chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh
 ```
 
 ---
 
 ## 使い方
 
-Claude Code を起動し、`/absence` と入力してください。
+Claude Code を起動し、用途に応じて以下のいずれかのコマンドを入力してください。
+
+### `/absence` — 手動で公欠申請
 
 ```
 /absence
@@ -77,6 +79,28 @@ Claude Code を起動し、`/absence` と入力してください。
 5. **申請実行** — 自動的にポータルへ送信
 6. **ログ保存** — `logs/log/` に申請内容が保存されます
 
+### `/absence-list` — 欠席日の一覧を出力
+
+```
+/absence-list
+```
+
+学生ポータルの「出欠確認」ページが内部で使っている API エンドポイント
+（`/PortalManagementWeb/public/attendancedetail/search`）を直接叩き、
+欠席になっている日付を構造化データで取得して一覧表示します。HTMLのスクレイピングは行いません。
+
+表示範囲を引数で指定できます（省略時は **今年度 = 4/1以降**）:
+
+```
+/absence-list          # 今年度（4/1以降）
+/absence-list 1m       # 直近1ヶ月
+/absence-list 3m       # 直近3ヶ月
+/absence-list 6m       # 直近6ヶ月
+/absence-list 1y       # 直近1年
+/absence-list all      # 全期間
+/absence-list 20260601 # 指定日以降
+```
+
 ---
 
 ## ファイル構成
@@ -85,19 +109,22 @@ Claude Code を起動し、`/absence` と入力してください。
 .
 ├── .claude/
 │   └── commands/
-│       └── absence.md      # /absence コマンド定義
+│       ├── absence.md          # /absence コマンド定義（手動申請）
+│       └── absence-list.md     # /absence-list コマンド定義（欠席日一覧）
 ├── data/
-│   ├── timetable.md        # 自分の時間割（.gitignore対象）
+│   ├── timetable.md            # 自分の時間割（.gitignore対象）
 │   ├── timetable.example.md
-│   └── weekdays.md         # 授業がある曜日
+│   └── weekdays.md             # 授業がある曜日
 ├── scripts/
-│   ├── login.sh            # ポータルへのログインスクリプト
-│   ├── run.sh              # .env読み込みラッパー
-│   └── submit.sh           # ポータルへのHTTP POSTスクリプト
+│   ├── login.sh                # ポータルへのログインスクリプト
+│   ├── run.sh                  # .env読み込みラッパー（申請送信）
+│   ├── submit.sh               # ポータルへのHTTP POSTスクリプト
+│   ├── attendance.sh           # 出欠データ取得（欠席日一覧の取得元）
+│   └── absence_list.sh         # 欠席日を範囲指定で整形表示
 ├── logs/
-│   └── log/                # 申請ログ（.gitignore対象）
-├── .env                    # 環境変数（.gitignore対象）
-└── .env.example            # 環境変数のテンプレート
+│   └── log/                    # 申請ログ（.gitignore対象）
+├── .env                        # 環境変数（.gitignore対象）
+└── .env.example                # 環境変数のテンプレート
 ```
 
 ---
