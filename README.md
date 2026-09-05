@@ -5,20 +5,49 @@
 ## 必要なもの
 
 - [Claude Code](https://claude.ai/code)
-- `curl`
+- `curl` / `jq` / `python3`
 
 ---
 
 ## セットアップ
 
-### 1. リポジトリをクローン
+### かんたんな方法: `/absence setup`
+
+リポジトリをクローンして Claude Code を起動し、以下を実行してください。
+環境チェックから `.env`・時間割の作成、ポータルへの疎通確認までを対話で進めます。
+
+```bash
+git clone <repository-url>
+cd <repository-name>
+claude
+```
+
+```
+/absence setup
+```
+
+現状の確認だけしたい場合は `/absence setup --check`（設定は変更されません）。
+
+診断だけをシェルから直接実行することもできます:
+
+```bash
+./scripts/absence_setup.sh          # チェックのみ
+./scripts/absence_setup.sh --fix    # 雛形コピー・chmod・ディレクトリ作成まで自動実行
+./scripts/absence_setup.sh --probe  # ポータルへの疎通確認まで実行
+```
+
+---
+
+### 手動でセットアップする場合
+
+#### 1. リポジトリをクローン
 
 ```bash
 git clone <repository-url>
 cd <repository-name>
 ```
 
-### 2. 環境変数を設定
+#### 2. 環境変数を設定
 
 ```bash
 cp .env.example .env
@@ -35,7 +64,7 @@ STUDENT_PORTAL_PHPSESSID=your_phpsessid_here
 
 > **PHPSESSID の取得方法:** ブラウザでポータルにログイン後、開発者ツール → Application → Sessions から `PHPSESSID` の値をコピーしてください。
 
-### 3. 時間割を設定
+#### 3. 時間割を設定
 
 `data/timetable.example.md` を参考に `data/timetable.md` を作成してください:
 
@@ -52,10 +81,10 @@ cp data/timetable.example.md data/timetable.md
 - 2限/授業名/講師名先生
 ```
 
-### 4. スクリプトに実行権限を付与
+#### 4. スクリプトに実行権限を付与
 
 ```bash
-chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh
+chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh scripts/absence_setup.sh
 ```
 
 ---
@@ -63,6 +92,21 @@ chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh
 ## 使い方
 
 Claude Code を起動し、用途に応じて以下のいずれかのコマンドを入力してください。
+
+### `/absence setup` — 初期セットアップ
+
+```
+/absence setup           # セットアップを対話で実行
+/absence setup --check   # 現状の診断だけ（設定は変更しない）
+```
+
+やること:
+
+1. **環境診断** — 必要コマンド・`.env`・時間割・実行権限・`logs/log` の有無をチェック
+2. **自動修復** — 雛形のコピー、`chmod +x`、ディレクトリ作成
+3. **`.env` の入力** — 未設定・雛形のままの項目だけを対話で埋める
+4. **時間割の作成** — `data/timetable.md` / `data/weekdays.md` を整える
+5. **疎通確認** — 実際にポータルへアクセスして出欠データが取れるか確認
 
 ### `/absence` — 手動で公欠申請
 
@@ -109,6 +153,7 @@ Claude Code を起動し、用途に応じて以下のいずれかのコマン�
 .
 ├── .claude/
 │   └── commands/
+│       ├── absence-setup.md    # /absence setup の手順定義（初期セットアップ）
 │       ├── absence.md          # /absence コマンド定義（手動申請）
 │       └── absence-list.md     # /absence-list コマンド定義（欠席日一覧）
 ├── data/
@@ -120,7 +165,8 @@ Claude Code を起動し、用途に応じて以下のいずれかのコマン�
 │   ├── run.sh                  # .env読み込みラッパー（申請送信）
 │   ├── submit.sh               # ポータルへのHTTP POSTスクリプト
 │   ├── attendance.sh           # 出欠データ取得（欠席日一覧の取得元）
-│   └── absence_list.sh         # 欠席日を範囲指定で整形表示
+│   ├── absence_list.sh         # 欠席日を範囲指定で整形表示
+│   └── absence_setup.sh        # セットアップ状態の診断・自動修復
 ├── logs/
 │   └── log/                    # 申請ログ（.gitignore対象）
 ├── .env                        # 環境変数（.gitignore対象）
