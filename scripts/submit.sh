@@ -19,9 +19,14 @@ IMAGE_PATH="${15}"
 TS=$(date +%s%3N)
 URL="${STUDENT_PORTAL_URL}/PortalManagementWeb/public/studentapplicationdetail/regist?ts=${TS}"
 
-MIME_TYPE=$(file --mime-type -b "${IMAGE_PATH}")
+# 写真なしの場合は空のまま送る（file/base64 にから文字列を渡すとエラー文字列が混入するため）
 TMPFILE=$(mktemp)
-echo -n "data:${MIME_TYPE};base64,$(base64 < "${IMAGE_PATH}" | tr -d '\n')" > "${TMPFILE}"
+if [ -n "${IMAGE_PATH}" ] && [ -f "${IMAGE_PATH}" ]; then
+  MIME_TYPE=$(file --mime-type -b "${IMAGE_PATH}")
+  echo -n "data:${MIME_TYPE};base64,$(base64 < "${IMAGE_PATH}" | tr -d '\n')" > "${TMPFILE}"
+else
+  : > "${TMPFILE}"
+fi
 
 curl -X POST "${URL}" \
   -H "Referer: ${STUDENT_PORTAL_URL}" \
