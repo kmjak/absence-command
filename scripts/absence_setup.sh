@@ -4,9 +4,13 @@
 # 必要なコマンド・設定ファイル・実行権限が揃っているかを確認して結果を一覧表示する。
 #
 # 使い方:
-#   scripts/absence_setup.sh          チェックのみ（何も変更しない。--check も同じ）
-#   scripts/absence_setup.sh --fix    自動で直せるもの（雛形コピー・chmod・ディレクトリ作成）を直してから再チェック
-#   scripts/absence_setup.sh --probe  上記に加えてポータルへの疎通確認まで行う（ネットワークアクセスあり）
+#   scripts/absence_setup.sh           チェックのみ（何も変更しない。--check も同じ）
+#   scripts/absence_setup.sh --fix     自動で直せるもの（雛形コピー・chmod・ディレクトリ作成・PHPSESSID取得）を直してから再チェック
+#   scripts/absence_setup.sh --probe   上記に加えてポータルへの疎通確認まで行う（ネットワークアクセスあり）
+#   scripts/absence_setup.sh --session PHPSESSID を取り直して .env に設定する（scripts/session.sh を実行）
+#
+# PHPSESSID は scripts/session.sh がポータルへのログインで自動取得するため、
+# ブラウザの開発者ツールから手動でコピーする必要はない。
 #
 # 出力フォーマット（1行1項目）:
 #   OK   <ID>  <メッセージ>     問題なし
@@ -23,11 +27,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 FIX=0
 PROBE=0
+SESSION=0
 for arg in "$@"; do
   case "$arg" in
-    --check) ;;  # チェックのみ（デフォルト動作）。明示指定できるようにしてあるだけ
-    --fix)   FIX=1 ;;
-    --probe) PROBE=1 ;;
+    --check)   ;;  # チェックのみ（デフォルト動作）。明示指定できるようにしてあるだけ
+    --fix)     FIX=1 ;;
+    --probe)   PROBE=1 ;;
+    --session) SESSION=1; FIX=1 ;;  # 取り直しは .env への書き込みを伴うので --fix 相当として扱う
     *) echo "不明なオプション: $arg" >&2; exit 2 ;;
   esac
 done
@@ -62,24 +68,49 @@ else
   ok "env:file" ".env"
 fi
 
+env_value() {
+  grep -E "^[[:space:]]*$1[[:space:]]*=" "$ROOT/.env" | head -1 | cut -d= -f2- \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+CREDS_OK=1
+
 if [ -f "$ROOT/.env" ]; then
-  # .env をサブシェルで読んで値だけ確認する（呼び出し元の環境は汚さない）
+  # PHPSESSID は自動取得できるので、先に接続情報（URL・ID・パスワード）の方を確認する
   while IFS='=' read -r key expected_dummy; do
-    value="$(grep -E "^${key}=" "$ROOT/.env" | head -1 | cut -d= -f2- \
-      | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
+    value="$(env_value "$key")"
     if [ -z "$value" ]; then
       ng "env:$key" "未設定です"
+      CREDS_OK=0
     elif [ "$value" = "$expected_dummy" ]; then
       ng "env:$key" "雛形のままです（実際の値に書き換えてください）"
+      CREDS_OK=0
     else
       ok "env:$key" "設定済み"
     fi
   done <<'KEYS'
 STUDENT_PORTAL_URL=https://example.com
-STUDENT_PORTAL_PHPSESSID=example_session_id
 STUDENT_PORTAL_USER_ID=your_student_id
 STUDENT_PORTAL_PASSWORD=your_password
 KEYS
+
+  # PHPSESSID はブラウザからコピーせず scripts/session.sh でログインして自動取得する
+  session_value="$(env_value STUDENT_PORTAL_PHPSESSID)"
+  if [ "$SESSION" = "1" ] || [ -z "$session_value" ] || [ "$session_value" = "example_session_id" ]; then
+    if [ "$CREDS_OK" = "0" ]; then
+      ng "env:STUDENT_PORTAL_PHPSESSID" "未設定です（URL・ID・パスワードを設定すれば自動取得できます）"
+    elif [ "$FIX" = "1" ]; then
+      if bash "$ROOT/scripts/session.sh" > /dev/null 2>&1; then
+        ok "env:STUDENT_PORTAL_PHPSESSID" "ログインして自動取得し .env に設定しました"
+      else
+        ng "env:STUDENT_PORTAL_PHPSESSID" "自動取得に失敗しました（scripts/session.sh でエラー内容を確認してください）"
+      fi
+    else
+      ng "env:STUDENT_PORTAL_PHPSESSID" "未設定です（--fix で自動取得できます）"
+    fi
+  else
+    ok "env:STUDENT_PORTAL_PHPSESSID" "設定済み"
+  fi
 fi
 
 # timetable.md
@@ -115,7 +146,7 @@ fi
 
 echo
 echo "=== スクリプトの実行権限 ==="
-for s in login.sh run.sh submit.sh attendance.sh absence_list.sh absence_setup.sh; do
+for s in login.sh run.sh submit.sh attendance.sh absence_list.sh absence_setup.sh session.sh; do
   path="$ROOT/scripts/$s"
   if [ ! -f "$path" ]; then
     ng "exec:$s" "ファイルがありません"
@@ -137,8 +168,15 @@ if [ "$PROBE" = "1" ]; then
   else
     if OUT="$(bash "$ROOT/scripts/attendance.sh" 2> /dev/null)" && echo "$OUT" | jq -e 'type == "array"' > /dev/null 2>&1; then
       ok "portal:probe" "出欠データを $(echo "$OUT" | jq 'length') 件取得できました"
+    elif [ "$FIX" = "1" ] && bash "$ROOT/scripts/session.sh" > /dev/null 2>&1 \
+      && OUT="$(bash "$ROOT/scripts/attendance.sh" 2> /dev/null)" \
+      && echo "$OUT" | jq -e 'type == "array"' > /dev/null 2>&1; then
+      # セッション切れだった場合はその場で取り直して再試行する
+      ok "portal:probe" "PHPSESSID を取り直して出欠データを $(echo "$OUT" | jq 'length') 件取得できました"
+    elif [ "$FIX" = "1" ]; then
+      ng "portal:probe" "PHPSESSID を取り直しても有効な JSON が返りませんでした（URL / 認証情報の誤りの可能性）"
     else
-      ng "portal:probe" "有効な JSON が返りませんでした（PHPSESSID の期限切れ・URL/認証情報の誤りの可能性）"
+      ng "portal:probe" "有効な JSON が返りませんでした（PHPSESSID の期限切れの可能性。--fix 付きで実行すると取り直します）"
     fi
   fi
 fi

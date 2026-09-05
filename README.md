@@ -31,9 +31,10 @@ claude
 診断だけをシェルから直接実行することもできます:
 
 ```bash
-./scripts/absence_setup.sh          # チェックのみ
-./scripts/absence_setup.sh --fix    # 雛形コピー・chmod・ディレクトリ作成まで自動実行
-./scripts/absence_setup.sh --probe  # ポータルへの疎通確認まで実行
+./scripts/absence_setup.sh           # チェックのみ
+./scripts/absence_setup.sh --fix     # 雛形コピー・chmod・ディレクトリ作成・PHPSESSID取得まで自動実行
+./scripts/absence_setup.sh --probe   # ポータルへの疎通確認まで実行
+./scripts/absence_setup.sh --session # PHPSESSID を取り直して .env に設定
 ```
 
 ---
@@ -59,10 +60,17 @@ cp .env.example .env
 STUDENT_PORTAL_URL=https://your-school-portal.example.com
 STUDENT_PORTAL_USER_ID=your_student_id
 STUDENT_PORTAL_PASSWORD=your_password
-STUDENT_PORTAL_PHPSESSID=your_phpsessid_here
 ```
 
-> **PHPSESSID の取得方法:** ブラウザでポータルにログイン後、開発者ツール → Application → Sessions から `PHPSESSID` の値をコピーしてください。
+`STUDENT_PORTAL_PHPSESSID` は手で設定する必要はありません。以下を実行すると、
+ポータルにログインして発行されたセッションIDを自動で `.env` に書き込みます:
+
+```bash
+./scripts/session.sh
+```
+
+`./scripts/absence_setup.sh --fix`（および `/absence setup`）でも同じ取得が行われます。
+セッションが切れたときも同じコマンドで取り直せます。
 
 #### 3. 時間割を設定
 
@@ -84,7 +92,7 @@ cp data/timetable.example.md data/timetable.md
 #### 4. スクリプトに実行権限を付与
 
 ```bash
-chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh scripts/absence_setup.sh
+chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh scripts/absence_setup.sh scripts/session.sh
 ```
 
 ---
@@ -162,6 +170,7 @@ Claude Code を起動し、用途に応じて以下のいずれかのコマン�
 │   └── weekdays.md             # 授業がある曜日
 ├── scripts/
 │   ├── login.sh                # ポータルへのログインスクリプト
+│   ├── session.sh              # ログインしてPHPSESSIDを取得し .env に自動設定
 │   ├── run.sh                  # .env読み込みラッパー（申請送信）
 │   ├── submit.sh               # ポータルへのHTTP POSTスクリプト
 │   ├── attendance.sh           # 出欠データ取得（欠席日一覧の取得元）

@@ -35,6 +35,7 @@
 `NG` に以下のいずれかが含まれていた場合は、`--fix` で自動修復してください。
 
 - `env:file`（`.env` が無い）
+- `env:STUDENT_PORTAL_PHPSESSID`（未設定 / 雛形のまま）※URL・ID・パスワードが設定済みの場合のみ
 - `data:timetable`（`data/timetable.md` が無い）
 - `logs:dir`（`logs/log` が無い）
 - `exec:*`（スクリプトの実行権限が無い）
@@ -43,7 +44,11 @@
 ./scripts/absence_setup.sh --fix
 ```
 
-`--fix` は雛形のコピー・`mkdir`・`chmod +x` だけを行い、**既存ファイルは上書きしません**。
+`--fix` は雛形のコピー・`mkdir`・`chmod +x`・**PHPSESSID の自動取得**を行い、
+**既存ファイルは上書きしません**（`.env` も PHPSESSID の行だけを差し替えます）。
+
+`.env` に URL・ログインID・パスワードがまだ無い状態では PHPSESSID を取得できません。
+その場合は Step 3 で先にそれらを設定してから、もう一度 `--fix` を実行してください。
 
 `cmd:*` の `NG`（`curl` / `jq` / `python3` / `base64` / `file` が無い）は自動修復できません。
 表示されたインストールコマンド（macOS なら `brew install <コマンド名>`）をユーザーに案内し、
@@ -62,20 +67,29 @@
 学生ポータルのパスワードを入力してください:
 ```
 
-`STUDENT_PORTAL_PHPSESSID` については以下を案内してください:
-
-```
-PHPSESSID を入力してください。
-
-  1. ブラウザで学生ポータルにログイン
-  2. 開発者ツール（⌘+Option+I）→ Application → Cookies → ポータルのドメイン
-  3. PHPSESSID の Value をコピー
-
-PHPSESSID:
-```
-
 入力された値で `.env` の該当行を書き換えてください（`.env` は `.gitignore` 対象なのでコミットされません）。
 **入力されたパスワードや PHPSESSID を会話の応答に出力しないでください。**
+
+### `STUDENT_PORTAL_PHPSESSID` はユーザーに聞かないこと（重要）
+
+**PHPSESSID は自動取得します。ブラウザの開発者ツールから値をコピーしてもらう必要はありません。**
+上の3項目を `.env` に書き込んだあと、以下を実行してください:
+
+```bash
+./scripts/session.sh
+```
+
+`scripts/session.sh` はポータルのログインAPIを Cookie なしで叩いて
+サーバに新しいセッションを発行させ（`Set-Cookie: PHPSESSID=...`）、
+その値で疎通確認をしたうえで `.env` の `STUDENT_PORTAL_PHPSESSID` の行だけを書き換えます。
+セッションIDは標準出力に出ないので、**取得した値を会話に表示しないでください**。
+
+`./scripts/absence_setup.sh --fix` を実行した場合はこの取得も一緒に行われるため、
+Step 2 で `--fix` を実行済みで `env:STUDENT_PORTAL_PHPSESSID` が `OK` になっていれば、
+このステップで改めて `session.sh` を実行する必要はありません。
+
+`session.sh` が失敗した場合はログインID / パスワード / URL の誤りを疑い、
+Step 3 の3項目を聞き直してから再実行してください。
 
 ---
 
@@ -106,11 +120,24 @@ PHPSESSID:
 ./scripts/absence_setup.sh --probe
 ```
 
+PHPSESSID の期限が切れていた場合は、`--fix` が付いていればその場で取り直して再試行します。
+そのため疎通確認は `--fix` と併せて実行するのが確実です:
+
+```bash
+./scripts/absence_setup.sh --fix --probe
+```
+
 `portal:probe` が `OK` なら成功です。`NG` の場合は以下を疑って案内してください:
 
-1. **PHPSESSID の期限切れ** … 最も多い原因。Step 3 の手順で取り直して `.env` を更新
-2. `STUDENT_PORTAL_URL` の誤り（末尾に `/` を付けていないか）
-3. ログインID / パスワードの誤り
+1. `STUDENT_PORTAL_URL` の誤り（末尾に `/` を付けていないか）
+2. ログインID / パスワードの誤り
+
+PHPSESSID を明示的に取り直したいときは以下が使えます:
+
+```bash
+./scripts/absence_setup.sh --session   # 取り直して .env に設定し、他のチェックも実行
+./scripts/session.sh                   # 取り直しだけを行う
+```
 
 ---
 
@@ -123,6 +150,7 @@ PHPSESSID:
 
   必要なコマンド      OK
   .env                OK
+  PHPSESSID           OK（自動取得済み）
   時間割              OK（12コマ）
   スクリプト権限      OK
   ポータル疎通        OK
