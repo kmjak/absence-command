@@ -4,5 +4,11 @@
 # ログファイル
 logs/log/*.md
 
+# 申請詳細のキャッシュ
+logs/.applications_cache.json
+
 # 時間割
 data/timetable.md
+
+# Python
+__pycache__/

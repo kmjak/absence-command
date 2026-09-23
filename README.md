@@ -92,7 +92,7 @@ cp data/timetable.example.md data/timetable.md
 #### 4. スクリプトに実行権限を付与
 
 ```bash
-chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh scripts/absence_setup.sh scripts/session.sh
+chmod +x scripts/login.sh scripts/run.sh scripts/submit.sh scripts/attendance.sh scripts/absence_list.sh scripts/applications.sh scripts/absence_setup.sh scripts/session.sh
 ```
 
 ---
@@ -131,7 +131,7 @@ Claude Code を起動し、用途に応じて以下のいずれかのコマン�
 5. **申請実行** — 自動的にポータルへ送信
 6. **ログ保存** — `logs/log/` に申請内容が保存されます
 
-### `/absence-list` — 欠席日の一覧を出力
+### `/absence-list` — 欠席日の一覧を申請ステータス付きで出力
 
 ```
 /absence-list
@@ -140,6 +140,33 @@ Claude Code を起動し、用途に応じて以下のいずれかのコマン�
 学生ポータルの「出欠確認」ページが内部で使っている API エンドポイント
 （`/PortalManagementWeb/public/attendancedetail/search`）を直接叩き、
 欠席になっている日付を構造化データで取得して一覧表示します。HTMLのスクレイピングは行いません。
+
+あわせて「申請一覧」の API から公欠届の申請状況を取得し、日付ごとのステータスを表示します:
+
+```
+欠席一覧（直近3ヶ月 / 全 30 コマ・13 日分）
+内訳: ⬜ 未申請 10日 ・ 🕒 申請中 2日 ・ 🔸 一部申請 1日
+
+   1) 🕒 申請中    2026-09-18 (金) … システム開発Ⅱ, ビジネストレーニング（4コマ）
+   2) 🔸 一部申請  2026-09-16 (水) … ネットワーク演習Ⅱ（2コマ・うち1コマ申請済み）
+   3) ⬜ 未申請    2026-09-09 (水) … ネットワーク演習Ⅱ（2コマ）
+```
+
+| 表示 | 意味 |
+|------|------|
+| ⬜ 未申請 | まだ公欠届を出していない（キャンセル済みの申請しか無い場合もこれ） |
+| 🕒 申請中 | 提出済みだがまだ承認されていない（ポータル上は「未承認」） |
+| 🔸 一部申請 | その日の欠席コマの一部だけが申請されている |
+| ✅ 承認済 | 承認済み（承認されると出欠が「公欠」に変わるため、通常は一覧から消えます） |
+| ❌ 却下 | 申請したが却下された |
+
+コマ単位のステータスは `./scripts/absence_list.sh --detail 2026-09-18` で確認できます。
+`/absence` で授業を選ぶときも、申請済みのコマには印が付き、既定では選ばれません（二重申請の防止）。
+
+申請ステータスは申請ごとの詳細APIから取得するため初回だけ時間がかかりますが、
+結果は `logs/.applications_cache.json` にキャッシュされ、2回目以降は高速です
+（承認状態は毎回取り直すため、「未承認 → 承認済」の変化はキャッシュがあっても反映されます）。
+ステータスが不要なときは `./scripts/absence_list.sh 1m --no-status` で省略できます。
 
 表示範囲を引数で指定できます（省略時は **今年度 = 4/1以降**）:
 
@@ -174,10 +201,13 @@ Claude Code を起動し、用途に応じて以下のいずれかのコマン�
 │   ├── run.sh                  # .env読み込みラッパー（申請送信）
 │   ├── submit.sh               # ポータルへのHTTP POSTスクリプト
 │   ├── attendance.sh           # 出欠データ取得（欠席日一覧の取得元）
-│   ├── absence_list.sh         # 欠席日を範囲指定で整形表示
+│   ├── applications.sh         # 公欠届の申請データ取得（申請ステータスの取得元）
+│   ├── absence_list.sh         # 欠席日を範囲指定でステータス付き整形表示
+│   ├── absence_status.py       # 欠席データと申請データの突き合わせ・整形
 │   └── absence_setup.sh        # セットアップ状態の診断・自動修復
 ├── logs/
-│   └── log/                    # 申請ログ（.gitignore対象）
+│   ├── log/                    # 申請ログ（.gitignore対象）
+│   └── .applications_cache.json # 申請詳細のキャッシュ（.gitignore対象）
 ├── .env                        # 環境変数（.gitignore対象）
 └── .env.example                # 環境変数のテンプレート
 ```

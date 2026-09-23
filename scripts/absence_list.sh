@@ -1,7 +1,15 @@
 #!/bin/bash
 
 # 欠席日を範囲指定で一覧表示する。
-# attendance.sh で全欠席データを取得し、指定範囲で絞って日付ごとに整形表示する。
+# attendance.sh で全欠席データを、applications.sh で公欠届の申請データを取得し、
+# 指定範囲で絞って日付ごとに「ステータス付き」で整形表示する。
+#
+# ステータス:
+#   ✅ 承認済    その日の欠席コマがすべて公欠届として承認されている
+#   🕒 申請中    申請済みだが、まだ承認されていない（未承認）
+#   🔸 一部申請  欠席コマの一部だけが申請されている
+#   ❌ 却下      申請したが却下された
+#   ⬜ 未申請    まだ申請していない（キャンセル済みの申請しかない場合もこれ）
 #
 # 使い方:
 #   scripts/absence_list.sh [RANGE]
@@ -15,12 +23,16 @@
 #       YYYYMMDD   指定日以降
 #
 #   scripts/absence_list.sh --detail <YYYY-MM-DD|YYYYMMDD>
-#     指定日の欠席コマ（時限・教科）だけを表示する。
-#     一覧から日付を選んで公欠申請へ進むとき、どのコマが欠席なのかを確認する用途。
+#     指定日の欠席コマ（時限・教科）をコマ単位のステータス付きで表示する。
+#     一覧から日付を選んで公欠申請へ進むとき、どのコマが欠席で、どのコマが申請済みかを
+#     確認する用途（二重申請の防止）。
+#
+#   --no-status を付けると申請データを取りに行かず、ステータス無しで高速に一覧表示する。
 #
 # 補足:
-#   - 既に取得済みの JSON を使い回したい場合は環境変数 ABSENCE_JSON にパスを渡す
-#     （その場合 attendance.sh の再取得をスキップする）。
+#   - 既に取得済みの JSON を使い回したい場合は環境変数 ABSENCE_JSON（欠席データ）と
+#     ABSENCE_APPLICATIONS（申請データ）にパスを渡す（その場合は再取得をスキップする）。
+#   - 申請データの取得に失敗しても一覧表示そのものは続行し、末尾に警告を出す。
 
 set -euo pipefail
 
@@ -31,6 +43,16 @@ back() { date -v-"$1" +%Y%m%d 2>/dev/null || date -d "$2 ago" +%Y%m%d; }
 
 MODE="list"
 TARGET=""
+WITH_STATUS=1
+
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --no-status) WITH_STATUS=0 ;;
+    *)           ARGS+=("$arg") ;;
+  esac
+done
+set -- ${ARGS+"${ARGS[@]}"}
 
 if [ "${1:-}" = "--detail" ]; then
   MODE="detail"
@@ -66,51 +88,39 @@ else
 fi
 
 # 欠席データを用意（ABSENCE_JSON が渡されていればそれを使う）
-if [ -n "${ABSENCE_JSON:-}" ]; then
-  JSON="$ABSENCE_JSON"
-else
-  JSON="$(mktemp)"
-  trap 'rm -f "$JSON"' EXIT
+JSON="${ABSENCE_JSON:-}"
+APPS=""
+APPS_TMP=""
+WARNING=""
+
+cleanup() { [ -n "${JSON_TMP:-}" ] && rm -f "$JSON_TMP"; [ -n "$APPS_TMP" ] && rm -f "$APPS_TMP"; return 0; }
+trap cleanup EXIT
+
+if [ -z "$JSON" ]; then
+  JSON_TMP="$(mktemp)"
+  JSON="$JSON_TMP"
   bash "$DIR/attendance.sh" > "$JSON"
 fi
 
+# 申請データを用意（取得に失敗してもステータス無しで一覧は出す）
+if [ "$WITH_STATUS" = "1" ]; then
+  if [ -n "${ABSENCE_APPLICATIONS:-}" ]; then
+    APPS="$ABSENCE_APPLICATIONS"
+  else
+    APPS_TMP="$(mktemp)"
+    SINCE="${CUT:-}"
+    [ "$MODE" = "detail" ] && SINCE="$TARGET"
+    if bash "$DIR/applications.sh" "$SINCE" > "$APPS_TMP"; then
+      APPS="$APPS_TMP"
+    else
+      WARNING="申請ステータスを取得できませんでした（セッション切れの可能性。./scripts/session.sh で取り直せます）"
+    fi
+  fi
+fi
+
 if [ "$MODE" = "detail" ]; then
-  jq -r --arg d "$TARGET" '[.[] | select(.d2_jugyou_date == $d)]
-    | sort_by(.d2_jugyou_jigen | tostring | tonumber) | .[]
-    | "\(.d2_jugyou_jigen)\t\(.ky_kyouka_name)"' "$JSON" \
-  | python3 -c '
-import sys, datetime
-d = sys.argv[1]
-w = ["月", "火", "水", "木", "金", "土", "日"]
-rows = [l.rstrip("\n") for l in sys.stdin if l.strip()]
-dt = datetime.date(int(d[:4]), int(d[4:6]), int(d[6:8]))
-head = dt.isoformat() + " (" + w[dt.weekday()] + ")"
-if not rows:
-    print(head + " に欠席のコマはありません。")
-    sys.exit(0)
-print(head + " の欠席コマ（" + str(len(rows)) + "コマ）\n")
-for r in rows:
-    jigen, subj = r.split("\t")
-    print("  " + str(jigen) + "限 … " + subj)
-' "$TARGET"
+  python3 "$DIR/absence_status.py" detail "$JSON" "$APPS" "$TARGET" "$WARNING"
   exit 0
 fi
 
-jq -r --arg cut "$CUT" '[.[] | select(.d2_jugyou_date >= $cut)]
-  | group_by(.d2_jugyou_date) | sort_by(.[0].d2_jugyou_date) | reverse | .[]
-  | "\(.[0].d2_jugyou_date)\t\(length)\t" + ([.[].ky_kyouka_name] | unique | join(", "))' "$JSON" \
-| python3 -c '
-import sys, datetime
-label = sys.argv[1]
-w = ["月", "火", "水", "木", "金", "土", "日"]
-rows = [l.rstrip("\n") for l in sys.stdin if l.strip()]
-coma = sum(int(r.split("\t")[1]) for r in rows)
-print("欠席一覧（" + label + " / 全 " + str(coma) + " コマ・" + str(len(rows)) + " 日分）\n")
-if not rows:
-    print("  該当する欠席はありません。")
-width = len(str(len(rows)))
-for i, r in enumerate(rows, 1):
-    d, n, subj = r.split("\t")
-    dt = datetime.date(int(d[:4]), int(d[4:6]), int(d[6:8]))
-    print("  " + str(i).rjust(width) + ") " + dt.isoformat() + " (" + w[dt.weekday()] + ") … " + subj + "（" + n + "コマ）")
-' "$LABEL"
+python3 "$DIR/absence_status.py" list "$JSON" "$APPS" "$CUT" "$LABEL" "$WARNING"

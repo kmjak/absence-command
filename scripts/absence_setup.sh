@@ -146,7 +146,7 @@ fi
 
 echo
 echo "=== スクリプトの実行権限 ==="
-for s in login.sh run.sh submit.sh attendance.sh absence_list.sh absence_setup.sh session.sh; do
+for s in login.sh run.sh submit.sh attendance.sh absence_list.sh applications.sh absence_setup.sh session.sh; do
   path="$ROOT/scripts/$s"
   if [ ! -f "$path" ]; then
     ng "exec:$s" "ファイルがありません"
