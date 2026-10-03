@@ -26,8 +26,8 @@ PARTIAL = ("🔸", "一部申請")
 REJECTED = ("❌", "却下")
 NONE = ("⬜", "未申請")
 
-# 一覧のステータス内訳に出す順番
-SUMMARY_ORDER = [NONE, PENDING, PARTIAL, APPROVED, REJECTED]
+# 一覧のステータス内訳に出す順番（承認済の日は一覧に出さないので含めない）
+SUMMARY_ORDER = [NONE, PENDING, PARTIAL, REJECTED]
 
 
 def width(text):
@@ -141,20 +141,27 @@ def jigen_status(jigen, applications):
 
 
 def print_list(days, apps_by_date, label, warning):
-    total_koma = sum(len(j) for j in days.values())
-    print(
-        "欠席一覧（{} / 全 {} コマ・{} 日分）".format(label, total_koma, len(days))
-    )
-
     dates = sorted(days, reverse=True)
     rows = []
+    hidden = 0
     for date in dates:
         subjects = sorted(set(days[date].values()))
         if apps_by_date is None:
             rows.append((date, None, "", subjects, len(days[date])))
-        else:
-            display, note = day_status(days[date], apps_by_date.get(date, []))
-            rows.append((date, display, note, subjects, len(days[date])))
+            continue
+        display, note = day_status(days[date], apps_by_date.get(date, []))
+        # 承認済みの日はもう対応不要なので一覧に出さない
+        if display == APPROVED:
+            hidden += 1
+            continue
+        rows.append((date, display, note, subjects, len(days[date])))
+
+    total_koma = sum(koma for _, _, _, _, koma in rows)
+    print(
+        "欠席一覧（{} / 全 {} コマ・{} 日分{}）".format(
+            label, total_koma, len(rows), "・承認済 {}日は非表示".format(hidden) if hidden else ""
+        )
+    )
 
     if apps_by_date is not None and rows:
         counts = {}
